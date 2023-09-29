@@ -14,12 +14,15 @@
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "miniz/miniz.c"
 
+#include <keystone/keystone.h>
+
 #include "bin.zip.h"
 
+#define OUTPUT_FILE "out"
 
 typedef struct OffsetData {
-    char* build_os;
-    char* build_arch;
+    const char* build_os;
+    const char* build_arch;
     int   size;
     int   offset;
 } OffsetData;
@@ -66,25 +69,70 @@ const OffsetData offset_data[] = {
     { "windows", "amd64", 10000000, 0x8e0 },
 };
 
-const char machine_code[] = {
-    0xe0, 0x00, 0x00, 0x10, //   adr	  x0, msg          // x0 <- "hello there"
-    0x81, 0x17, 0x40, 0xf9, //   ldr     x1, [x28, 40]     // x1 <- stderr
-    0x89, 0x57, 0x40, 0xf9, //   ldr     x9, [x28, 168]    // x9 <- fputs
-    0x20, 0x01, 0x3f, 0xd6, //   blr     x9                // x9(x0, x1)
+int main(int argc, char** argv) {
+    if (argc != 4) {
+        printf("Usage: %s <input_file> <build_os> <build_arch>\n", argv[0]);
+        return 1;
+    }
 
-    0xa0, 0x08, 0x80, 0x52, //   mov     w0, 69           // x0 <- 69
-    0x89, 0x2b, 0x40, 0xf9, //   ldr     x9, [x28, 80]    // x9 <- exit
-    0x20, 0x01, 0x3f, 0xd6, //   blr     x9               // x9(x0)
+    const char* input_file = argv[1];
+    const char* build_os = argv[2];
+    const char* build_arch = argv[3];
+
+    FILE* f = fopen(input_file, "r");
+    if (!f) {
+        printf("Failed to open %s\n", input_file);
+        return 1;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long source_code_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char* source_code = (char*)malloc(source_code_len + 1);
+    fread(source_code, 1, source_code_len, f);
+    fclose(f);
+
+    source_code[source_code_len] = 0;
 
 
-    0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x74, 0x68, 0x65, 0x72, 0x65, 0x0a, 0x00
-};
+    ks_engine* ks;
+    ks_arch arch;
+    ks_mode mode;
 
-const char* build_os = "mac";
-const char* build_arch = "arm64";
+    if (strcmp(build_arch, "amd64") == 0) {
+        arch = KS_ARCH_X86;
+        mode = KS_MODE_64;
+    } else if (strcmp(build_arch, "arm64") == 0) {
+        arch = KS_ARCH_ARM64;
+        mode = (ks_mode)0;
+    } else {
+        printf("Invalid build_arch: %s\n", build_arch);
+        return 1;
+    }
 
-int main() {
-    int machine_code_len = sizeof(machine_code);
+    if (ks_open(arch, mode, &ks) != KS_ERR_OK) {
+        printf("Failed to initialize keystone\n");
+        return 1;
+    }
+
+      size_t statement_count;
+      unsigned char *machine_code;
+      size_t machine_code_len;
+
+
+    if (ks_asm(ks, source_code, 0, &machine_code, &machine_code_len, &statement_count) != KS_ERR_OK) {
+        printf("failed to assemble code: count=%lu, error=%u\n", statement_count, ks_errno(ks));
+        return 1;
+    }
+
+    // for (int i = 0; i < machine_code_len; i++) {
+    //     printf("%02x ", machine_code[i]);
+    // }
+    // printf("\n");
+    printf("Compiled %lu bytes, %lu statements\n", machine_code_len, statement_count);
+
+
     int size = 0, offset = 0;
 
     for (int i = 0; i < sizeof(offset_data) / sizeof(OffsetData); i++) {
@@ -102,7 +150,7 @@ int main() {
         return 1;
     }
 
-    char* ext = build_os[0] == 'w' ? ".exe" : "";
+    const char* ext = build_os[0] == 'w' ? ".exe" : "";
 
     char filename[100];
     snprintf(filename, sizeof(filename), "%s_%s_%d%s", build_os, build_arch, size, ext);
@@ -125,7 +173,7 @@ int main() {
         if (!strcmp(file_stat.m_filename, filename)) break;
     }
 
-    char* p = mz_zip_reader_extract_file_to_heap(&zip_archive, filename, (size_t*)&file_stat.m_uncomp_size, 0);
+    char* p = (char*)mz_zip_reader_extract_file_to_heap(&zip_archive, filename, (size_t*)&file_stat.m_uncomp_size, 0);
     if (!p) {
         printf("mz_zip_reader_extract_file_to_heap() failed!\n");
         mz_zip_reader_end(&zip_archive);
@@ -135,13 +183,13 @@ int main() {
     char* file_buf = p + offset;
     memcpy(file_buf, machine_code, machine_code_len);
 
-    if (remove("compiled") != 0 && errno != ENOENT) {
+    if (remove(OUTPUT_FILE) != 0 && errno != ENOENT) {
         printf("Failed to remove old file\n");
         return 1;
     }
 
-    int fd = open("compiled", O_RDWR | O_CREAT, 0777);
-    FILE* f = fdopen(fd, "w");
+    int fd = open(OUTPUT_FILE, O_RDWR | O_CREAT, 0777);
+    f = fdopen(fd, "w");
     fwrite(p, 1, file_stat.m_uncomp_size, f);
     fclose(f);
 
@@ -150,15 +198,17 @@ int main() {
 
     // code signing
     if (strcmp(build_os, "mac") == 0) {
-        const char* command = build_os[0] == 'w' ? "rcodesign sign compiled > nul" : "codesign -s - compiled > /dev/null";
+        const char* command = build_os[0] == 'w' ? "rcodesign sign " OUTPUT_FILE " > nul" : "codesign -s - " OUTPUT_FILE " > /dev/null";
         if (system(command) != 0)
 #if __APPLE__
-            if (system("codesign -s - compiled > /dev/null") != 0)
+            if (system("codesign -s - " OUTPUT_FILE " > /dev/null") != 0)
 #endif
             {
                 printf("Failed to sign macOS binary. Please install rcodesign:\nhttps://github.com/indygreg/apple-platform-rs/tree/main/apple-codesign\n");
                 return 1;
             }
     }
+
+    printf("output written to ./" OUTPUT_FILE "\n");
     return 0;
 }
