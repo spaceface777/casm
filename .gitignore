@@ -1,0 +1,13 @@
+*
+!*.*
+!*/
+
+!LICENSE
+
+.vscode
+*.out
+*.exe
+*.o
+*.a
+*.dSYM/
+*.zip
