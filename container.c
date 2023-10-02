@@ -1,7 +1,9 @@
+#ifndef __COSMOPOLITAN__
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#endif
 
 #ifdef __APPLE__
 #define TEXT_SECTION __attribute__((section("__TEXT,__text")))
@@ -62,7 +64,7 @@ int main(int argc, char** argv, char** envp) {
         "call *%0\n"
         : // output
         : "g"(CODE), "X"(DATA_TABLE) // input
-        : "rax", "rbx", "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+        : "rax", "rbx", "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "cc", "memory"
     );
 #elif defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
     __asm__ __volatile__(
@@ -76,4 +78,3 @@ int main(int argc, char** argv, char** envp) {
     #error "Unsupported architecture"
 #endif
 }
-x

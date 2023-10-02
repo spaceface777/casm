@@ -1,13 +1,18 @@
 *
 !*.*
 !*/
-
 !LICENSE
 
-.vscode
 *.out
 *.exe
+*.com
 *.o
 *.a
+
+!thirdparty/cosmopolitan/**/*
+
+.DS_Store
 *.dSYM/
 *.zip
+bin/
+.vscode

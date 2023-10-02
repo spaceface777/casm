@@ -12,13 +12,13 @@
 #define MINIZ_NO_ARCHIVE_WRITING_APIS
 #define MINIZ_NO_ZLIB_APIS
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
-#include "miniz/miniz.c"
+#include "thirdparty/miniz/miniz.c"
 
 #include <keystone/keystone.h>
 
 #include "bin.zip.h"
 
-#define OUTPUT_FILE "out"
+#define OUTPUT_FILE "out.com"
 
 typedef struct OffsetData {
     const char* build_os;
@@ -28,56 +28,24 @@ typedef struct OffsetData {
 } OffsetData;
 
 const OffsetData offset_data[] = {
-    { "linux", "amd64", 100000,     0x340 },
-    { "linux", "amd64", 200000,     0x340 },
-    { "linux", "amd64", 500000,     0x340 },
-    { "linux", "amd64", 1000000,    0x340 },
-    { "linux", "amd64", 2000000,    0x340 },
-    { "linux", "amd64", 5000000,    0x340 },
-    { "linux", "amd64", 10000000,   0x340 },
-
-    { "linux", "arm64", 100000,     0x9390 },
-    { "linux", "arm64", 200000,     0x9390 },
-    { "linux", "arm64", 500000,     0x9390 },
-    { "linux", "arm64", 1000000,    0x9390 },
-    { "linux", "arm64", 2000000,    0x9390 },
-    { "linux", "arm64", 5000000,    0x9390 },
-    { "linux", "arm64", 10000000,   0x9390 },
-
-    { "mac", "amd64", 100000,       0x3900 },
-    { "mac", "amd64", 200000,       0x3260 },
-    { "mac", "amd64", 500000,       0x1e80 },
-    { "mac", "amd64", 1000000,      0x3d60 },
-    { "mac", "amd64", 2000000,      0x3b20 },
-    { "mac", "amd64", 5000000,      0x3460 },
-    { "mac", "amd64", 10000000,     0x2920 },
-
-    { "mac", "arm64", 100000,       0x3900 },
-    { "mac", "arm64", 200000,       0x3260 },
-    { "mac", "arm64", 500000,       0x1e80 },
-    { "mac", "arm64", 1000000,      0x3d60 },
-    { "mac", "arm64", 2000000,      0x3b20 },
-    { "mac", "arm64", 5000000,      0x3460 },
-    { "mac", "arm64", 10000000,     0x2920 },
-
-    { "windows", "amd64", 100000,   0x8e0 },
-    { "windows", "amd64", 200000,   0x8e0 },
-    { "windows", "amd64", 500000,   0x8e0 },
-    { "windows", "amd64", 1000000,  0x8e0 },
-    { "windows", "amd64", 2000000,  0x8e0 },
-    { "windows", "amd64", 5000000,  0x8e0 },
-    { "windows", "amd64", 10000000, 0x8e0 },
+    { "", "amd64", 100000,     0x5a40 },
+    { "", "amd64", 200000,     0x5a40 },
+    { "", "amd64", 500000,     0x5a40 },
+    { "", "amd64", 1000000,    0x5a40 },
+    { "", "amd64", 2000000,    0x5a40 },
+    { "", "amd64", 5000000,    0x5a40 },
+    { "", "amd64", 10000000,   0x5a40 },
 };
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
-        printf("Usage: %s <input_file> <build_os> <build_arch>\n", argv[0]);
+
+
+    if (argc != 2) {
+        printf("Usage: %s <input_file>\n", argv[0]);
         return 1;
     }
 
     const char* input_file = argv[1];
-    const char* build_os = argv[2];
-    const char* build_arch = argv[3];
 
     FILE* f = fopen(input_file, "r");
     if (!f) {
@@ -97,28 +65,17 @@ int main(int argc, char** argv) {
 
 
     ks_engine* ks;
-    ks_arch arch;
-    ks_mode mode;
-
-    if (strcmp(build_arch, "amd64") == 0) {
-        arch = KS_ARCH_X86;
-        mode = KS_MODE_64;
-    } else if (strcmp(build_arch, "arm64") == 0) {
-        arch = KS_ARCH_ARM64;
-        mode = (ks_mode)0;
-    } else {
-        printf("Invalid build_arch: %s\n", build_arch);
-        return 1;
-    }
+    ks_arch arch = KS_ARCH_X86;
+    ks_mode mode = KS_MODE_64;
 
     if (ks_open(arch, mode, &ks) != KS_ERR_OK) {
         printf("Failed to initialize keystone\n");
         return 1;
     }
 
-      size_t statement_count;
-      unsigned char *machine_code;
-      size_t machine_code_len;
+    size_t statement_count;
+    unsigned char *machine_code;
+    size_t machine_code_len;
 
 
     if (ks_asm(ks, source_code, 0, &machine_code, &machine_code_len, &statement_count) != KS_ERR_OK) {
@@ -126,17 +83,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // for (int i = 0; i < machine_code_len; i++) {
-    //     printf("%02x ", machine_code[i]);
-    // }
-    // printf("\n");
     printf("Compiled %lu bytes, %lu statements\n", machine_code_len, statement_count);
 
 
     int size = 0, offset = 0;
 
     for (int i = 0; i < sizeof(offset_data) / sizeof(OffsetData); i++) {
-        if (strcmp(offset_data[i].build_os, build_os) == 0 && strcmp(offset_data[i].build_arch, build_arch) == 0) {
+        if (strcmp(offset_data[i].build_os, "") == 0 && strcmp(offset_data[i].build_arch, "amd64") == 0) {
             if (offset_data[i].size >= size) {
                 size = offset_data[i].size;
                 offset = offset_data[i].offset;
@@ -146,14 +99,14 @@ int main(int argc, char** argv) {
     }
 
     if (size == 0) {
-        printf("No offset data found for %s %s\n", build_os, build_arch);
+        printf("No offset data found\n");
         return 1;
     }
 
-    const char* ext = build_os[0] == 'w' ? ".exe" : "";
+    const char* ext = ".com";
 
     char filename[100];
-    snprintf(filename, sizeof(filename), "%s_%s_%d%s", build_os, build_arch, size, ext);
+    snprintf(filename, sizeof(filename), "amd64_%d%s", size, ext);
 
     mz_zip_archive zip_archive = {0};
     int status = mz_zip_reader_init_mem(&zip_archive, bin_zip, bin_zip_len, 0);
@@ -195,19 +148,6 @@ int main(int argc, char** argv) {
 
     mz_free(p);
     mz_zip_reader_end(&zip_archive);
-
-    // code signing
-    if (strcmp(build_os, "mac") == 0) {
-        const char* command = build_os[0] == 'w' ? "rcodesign sign " OUTPUT_FILE " > nul" : "codesign -s - " OUTPUT_FILE " > /dev/null";
-        if (system(command) != 0)
-#if __APPLE__
-            if (system("codesign -s - " OUTPUT_FILE " > /dev/null") != 0)
-#endif
-            {
-                printf("Failed to sign macOS binary. Please install rcodesign:\nhttps://github.com/indygreg/apple-platform-rs/tree/main/apple-codesign\n");
-                return 1;
-            }
-    }
 
     printf("output written to ./" OUTPUT_FILE "\n");
     return 0;
