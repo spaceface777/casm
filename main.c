@@ -18,8 +18,6 @@
 
 #include "bin.zip.h"
 
-#define OUTPUT_FILE "out.com"
-
 typedef struct OffsetData {
     const char* build_os;
     const char* build_arch;
@@ -37,33 +35,7 @@ const OffsetData offset_data[] = {
     { "", "amd64", 10000000,   0x5a40 },
 };
 
-int main(int argc, char** argv) {
-
-
-    if (argc != 2) {
-        printf("Usage: %s <input_file>\n", argv[0]);
-        return 1;
-    }
-
-    const char* input_file = argv[1];
-
-    FILE* f = fopen(input_file, "r");
-    if (!f) {
-        printf("Failed to open %s\n", input_file);
-        return 1;
-    }
-
-    fseek(f, 0, SEEK_END);
-    long source_code_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    char* source_code = (char*)malloc(source_code_len + 1);
-    fread(source_code, 1, source_code_len, f);
-    fclose(f);
-
-    source_code[source_code_len] = 0;
-
-
+int compile(const char* source_code, int source_code_len, char** out_binary, int* out_binary_len) {
     ks_engine* ks;
     ks_arch arch = KS_ARCH_X86;
     ks_mode mode = KS_MODE_64;
@@ -136,6 +108,48 @@ int main(int argc, char** argv) {
     char* file_buf = p + offset;
     memcpy(file_buf, machine_code, machine_code_len);
 
+    mz_zip_reader_end(&zip_archive);
+
+    *out_binary = p;
+    *out_binary_len = file_stat.m_uncomp_size;
+
+    return 0;
+}
+
+
+#define OUTPUT_FILE "out.com"
+int main(int argc, char** argv) {
+    if (argc != 2) {
+        printf("Usage: %s <input_file>\n", argv[0]);
+        return 1;
+    }
+
+    const char* input_file = argv[1];
+
+    FILE* f = fopen(input_file, "r");
+    if (!f) {
+        printf("Failed to open %s\n", input_file);
+        return 1;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long source_code_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char* source_code = (char*)malloc(source_code_len + 1);
+    fread(source_code, 1, source_code_len, f);
+    fclose(f);
+
+    source_code[source_code_len] = 0;
+
+    char* p;
+    int file_len;
+
+    if (compile(source_code, source_code_len, &p, &file_len) != 0) {
+        printf("Failed to compile\n");
+        return 1;
+    }
+
     if (remove(OUTPUT_FILE) != 0 && errno != ENOENT) {
         printf("Failed to remove old file\n");
         return 1;
@@ -143,11 +157,8 @@ int main(int argc, char** argv) {
 
     int fd = open(OUTPUT_FILE, O_RDWR | O_CREAT, 0777);
     f = fdopen(fd, "w");
-    fwrite(p, 1, file_stat.m_uncomp_size, f);
+    fwrite(p, 1, file_len, f);
     fclose(f);
-
-    mz_free(p);
-    mz_zip_reader_end(&zip_archive);
 
     printf("output written to ./" OUTPUT_FILE "\n");
     return 0;
